@@ -10,6 +10,12 @@ Stage: path resolution + CSV read only (no torch/transform yet).
 from __future__ import annotations  # use future annotations: lets us use forward refs in type hints
 from pathlib import Path               # Path helps with OS-independent file paths
 import pandas as pd                    # pandas used for csv reading and dataframe operations
+from typing import Tuple               # typing helpers for function signatures
+from PIL import Image                  # PIL for opening images
+
+import torch                           # torch for Dataset base class and tensors
+from torch.utils.data import Dataset   # dataset base class we implement below
+from torchvision import transforms     # image transforms / augmentations
 
 
 def _find_data_root(start: Path) -> Path:  # search up from 'start' to find the project's data folder
@@ -65,3 +71,66 @@ def load_metadata() -> pd.DataFrame:  # read and normalize the metadata csv into
     out = df[[c_img, c_tgt]].copy()  # select only the two columns we need and copy to avoid view issues
     out.columns = ["image_name", "target"]  # rename to a stable, minimal API for downstream code
     return out  # return the cleaned dataframe
+# possible locations for the images folder (for fallback issues)
+IMG_CANDIDATES = [DATA_ROOT / "train-image" / "image", DATA_ROOT / "train-image"]  
+
+def _resolve_image_root() -> Path:
+    for d in IMG_CANDIDATES:
+        if d.exists():
+            return d
+    raise FileNotFoundError("Could not find 'data/train-image' or 'data/train-image/image'.")
+
+IMG_ROOT = _resolve_image_root()
+def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
+    """chore: Will complete later
+    """
+    # standard ImageNet normalization values (common default)
+    norm = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+
+    # Minimal train transform: convert to tensor and normalize
+    train_t = transforms.Compose([
+        transforms.ToTensor(),  # convert PIL image to torch.FloatTensor [0,1]
+        norm                   # normalize channels to mean/std
+    ])
+
+    # eval transform should match train preprocessing (no randomness)
+    eval_t = transforms.Compose([
+        transforms.ToTensor(),
+        norm
+    ])
+
+    return train_t, eval_t
+
+class ISICDataset(Dataset):
+    """chore: Will complete later
+    """
+    def __init__(self, df: pd.DataFrame, root: Path, tfm=None):
+        # store a copy of the dataframe indexed 0..N-1 for reliable iloc
+        self.df = df.reset_index(drop=True)
+        # root can be a string or Path; make sure it's a Path for path ops
+        self.root = Path(root)
+        # tfm is a torchvision transform callable (or None); applied to PIL Image
+        self.tfm = tfm
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, i: int):
+        r = self.df.iloc[i]
+        # normalize suffix
+        name = str(r.image_name)
+        if not name.lower().endswith(".jpg"):
+            name += ".jpg"
+        path = self.root / name
+        # open the image and ensure RGB channels
+        img = Image.open(path).convert("RGB")
+
+        # apply transform if provided (usually train transforms expect PIL -> Tensor)
+        if self.tfm:
+            img = self.tfm(img)
+
+        # ensure label is an integer (some CSVs use strings/ints)
+        label = int(r.target)
+
+        # return the image tensor (or PIL if no tfm), integer label, and path as string
+        return img, label, str(path)
