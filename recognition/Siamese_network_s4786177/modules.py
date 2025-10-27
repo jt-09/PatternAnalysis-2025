@@ -14,7 +14,18 @@ import torch.nn as nn                   # neural network modules
 from torchvision import models          # pretrained ResNet50 (allowed to use from ed)
 import torch.nn.functional as F         # functional API for activations, losses, etc.
 
+# -------------------------- helpers --------------------------
+# optimal initialization method for neural networks that use ReLU activation functions.
+# idea taken from https://towardsdatascience.com/kaiming-he-initialization-in-neural-networks-math-proof-73b9a0d845c4/
+def _init_linear_stack(module: nn.Module, nonlinearity: str = "relu") -> None:
+    """Kaiming init for all Linear layers in a stack."""
+    for m in module.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.kaiming_normal_(m.weight, nonlinearity=nonlinearity)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
 
+# -------------------------- components --------------------------
 class FeatureExtractor(nn.Module):
     """
     A ResNet50 backbone followed by a small MLP projection head that maps the
@@ -81,3 +92,35 @@ class TripletLoss(nn.Module):
         d_ap = torch.norm(a - p, p=2, dim=1)
         d_an = torch.norm(a - n, p=2, dim=1)
         return F.relu(d_ap - d_an + self.margin).mean()
+    
+
+class ClassifierHead(nn.Module):
+    """
+    Linear 2-class head operating on embeddings.
+    Output: logits with shape [B, 2] (normal / melanoma).
+    """
+    def __init__(self, emb_dim: int = 128, num_classes: int = 2) -> None:
+        super().__init__()
+        self.fc = nn.Linear(emb_dim, num_classes)
+        nn.init.kaiming_normal_(self.fc.weight, nonlinearity="linear")
+        if self.fc.bias is not None:
+            nn.init.zeros_(self.fc.bias)
+
+    def forward(self, emb: torch.Tensor) -> torch.Tensor:
+        return self.fc(emb)
+
+
+class SiameseNet(nn.Module):
+    """chore: yet to do
+    """
+    def __init__(self, emb_dim: int = 128, drop: float = 0.6, pretrained: bool = True) -> None:
+        super().__init__()
+        self.fe  = FeatureExtractor(emb_dim=emb_dim, drop=drop, pretrained=pretrained, l2_normalize=True)
+        self.clf = ClassifierHead(emb_dim=emb_dim, num_classes=2)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        emb = self.fe(x)
+        logits = self.clf(emb)
+        return emb, logits
+
+
