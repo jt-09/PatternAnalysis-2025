@@ -3,15 +3,16 @@ modules.py
 Student name: Jay Thakkar
 Student number: s4786177
 Description: Implements a ResNet50-based feature extractor with a small MLP head.
-Stage: ResNet components only (no TripletLoss / classifier / wrapper yet).
+Stage: ResNet components + TripletLoss (no classifier/wrapper yet)
 """
 
 from __future__ import annotations  # use future annotations for forward refs in type hints
 from typing import Optional
 
-import torch                           # core tensor library
-import torch.nn as nn                  # neural network modules
-from torchvision import models         # pretrained ResNet50 (allowed to use from ed)
+import torch                            # core tensor library
+import torch.nn as nn                   # neural network modules
+from torchvision import models          # pretrained ResNet50 (allowed to use from ed)
+import torch.nn.functional as F         # functional API for activations, losses, etc.
 
 
 class FeatureExtractor(nn.Module):
@@ -64,3 +65,19 @@ class FeatureExtractor(nn.Module):
             # kept false for now
             emb = torch.nn.functional.normalize(emb, p=2, dim=1)
         return emb
+
+# https://github.com/shivsondhi/Triplet-Loss/blob/master/triplet_loss_functions.py for reference/ideation
+class TripletLoss(nn.Module):
+    """
+    Triplet loss with margin:
+        L = max(0, ||A-P||_2 - ||A-N||_2 + margin)
+    Encourages the anchor to be closer to the positive than to the negative by at least 'margin'.
+    """
+    def __init__(self, margin: float = 1.0) -> None:
+        super().__init__()
+        self.margin = float(margin)
+
+    def forward(self, a: torch.Tensor, p: torch.Tensor, n: torch.Tensor) -> torch.Tensor:
+        d_ap = torch.norm(a - p, p=2, dim=1)
+        d_an = torch.norm(a - n, p=2, dim=1)
+        return F.relu(d_ap - d_an + self.margin).mean()
