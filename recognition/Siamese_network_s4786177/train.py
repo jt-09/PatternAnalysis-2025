@@ -7,21 +7,20 @@ Stage: Basically barebones
 """
 
 from __future__ import annotations
-from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 
-from dataset import get_isic2020_data_loaders, set_seed
+from dataset import get_isic2020_data_loaders, set_seed, DATA_ROOT
 from modules import SiameseNet
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def train_one_epoch(
-    epochs: int = 3,
+    epochs: int = 1,
     batch_size: int = 32,
     lr: float = 1e-4,
     emb_dim: int = 128,
@@ -72,6 +71,20 @@ def train_one_epoch(
         history["val_acc"].append(va_acc)
 
         print(f"Epoch {epoch}:: train accuracy: {tr_acc:.3f} | val accuracy: {va_acc:.3f}")
+        
+        # ---- single plot: accuracy over epochs ----
+        reports = (DATA_ROOT.parent / "reports").resolve()
+        reports.mkdir(parents=True, exist_ok=True)
+        ep = np.arange(1, epochs + 1)
+
+        plt.figure(figsize=(6,4))
+        plt.plot(ep, history["train_acc"], marker="o", label="Train Acc")
+        plt.plot(ep, history["val_acc"],   marker="o", label="Val Acc")
+        plt.title("Accuracy over epochs")
+        plt.xlabel("Epoch"); plt.ylabel("Accuracy"); plt.grid(True); plt.legend()
+        plt.savefig(reports / "acc.png", dpi=180, bbox_inches="tight")
+        plt.close()
+
 
 
 if __name__ == "__main__":
