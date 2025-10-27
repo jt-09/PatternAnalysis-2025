@@ -19,6 +19,7 @@ from torchvision import transforms     # image transforms / augmentations
 import random
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
 from torchvision import transforms
 from sklearn.model_selection import train_test_split
 
@@ -74,7 +75,13 @@ def load_metadata() -> pd.DataFrame:  # read and normalize the metadata csv into
 
     out = df[[c_img, c_tgt]].copy()  # select only the two columns we need and copy to avoid view issues
     out.columns = ["image_name", "target"]  # rename to a stable, minimal API for downstream code
+
+    # normalize target to {0,1} if needed (handle strings like 'benign'/'malignant')
+    if out["target"].dtype == object:
+        out["target"] = out["target"].str.lower().map({"benign": 0, "malignant": 1}).astype(int)
+
     return out  # return the cleaned dataframe
+
 # possible locations for the images folder (for fallback issues)
 IMG_CANDIDATES = [DATA_ROOT / "train-image" / "image", DATA_ROOT / "train-image"]  
 
@@ -88,6 +95,7 @@ def _resolve_image_root() -> Path:
     raise FileNotFoundError("Could not find 'data/train-image' or 'data/train-image/image'.")
 
 IMG_ROOT = _resolve_image_root()  # resolved base path where training images live
+
 def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
     """chore: Will complete later
     """
@@ -95,13 +103,21 @@ def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
     norm = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
     # Minimal train transform: convert to tensor and normalize
+    # (Upgraded with common dermoscopy-friendly augmentations)
     train_t = transforms.Compose([
-        transforms.ToTensor(),  # convert PIL image to torch.FloatTensor [0,1]
-        norm                   # normalize channels to mean/std
+        transforms.RandomResizedCrop(224, scale=(0.85, 1.0)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.5),
+        transforms.RandomRotation(degrees=15, fill=0),
+        transforms.ColorJitter(brightness=0.10, contrast=0.10, saturation=0.05, hue=0.02),
+        transforms.ToTensor(),   # convert PIL image to torch.FloatTensor [0,1]
+        norm                     # normalize channels to mean/std
     ])
 
     # eval transform should match train preprocessing (no randomness)
     eval_t = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         norm
     ])
@@ -164,16 +180,34 @@ def get_isic2020_data(seed: int = 42):
         pd.DataFrame({"image_name": Xte, "target": yte}),
     )
 
-def get_isic2020_data_loaders(bs: int = 32, workers: int = 2, seed: int = 42):
+def _make_balanced_sampler(y_series: pd.Series) -> WeightedRandomSampler:
+    # weights inversely proportional to class frequency -> balances sampling
+    class_counts = y_series.value_counts().to_dict()
+    weights_per_class = {c: 1.0 / float(cnt) for c, cnt in class_counts.items()}
+    weights = y_series.map(weights_per_class).astype(float).to_numpy()
+    return WeightedRandomSampler(weights=weights, num_samples=len(weights), replacement=True)
+
+def get_isic2020_data_loaders(bs: int = 32, workers: int = 2, seed: int = 42, balance: bool = True):
     # build DataLoaders for train, val, and test sets using the minimal transforms
     set_seed(seed)
     tr, v, te = get_isic2020_data(seed)
     ttf, etf = get_transforms()
+
     trd = ISICDataset(tr, IMG_ROOT, ttf)
     vd  = ISICDataset(v, IMG_ROOT, etf)
     td  = ISICDataset(te, IMG_ROOT, etf)
-    return (
-        DataLoader(trd, batch_size=bs, shuffle=True,  num_workers=workers, pin_memory=True),
-        DataLoader(vd,  batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True),
-        DataLoader(td,  batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True),
+
+    sampler = _make_balanced_sampler(tr["target"]) if balance else None
+
+    train_loader = DataLoader(
+        trd,
+        batch_size=bs,
+        shuffle=(sampler is None),
+        sampler=sampler,
+        num_workers=workers,
+        pin_memory=True,
     )
+    val_loader = DataLoader(vd, batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True)
+    test_loader = DataLoader(td, batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True)
+
+    return train_loader, val_loader, test_loader
