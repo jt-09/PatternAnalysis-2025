@@ -16,7 +16,11 @@ from PIL import Image                  # PIL for opening images
 import torch                           # torch for Dataset base class and tensors
 from torch.utils.data import Dataset   # dataset base class we implement below
 from torchvision import transforms     # image transforms / augmentations
-
+import random
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from sklearn.model_selection import train_test_split
 
 def _find_data_root(start: Path) -> Path:  # search up from 'start' to find the project's data folder
     """
@@ -75,12 +79,15 @@ def load_metadata() -> pd.DataFrame:  # read and normalize the metadata csv into
 IMG_CANDIDATES = [DATA_ROOT / "train-image" / "image", DATA_ROOT / "train-image"]  
 
 def _resolve_image_root() -> Path:
+    # Check each candidate directory in order and return the first valid one.
+    # Helps support both flattened and nested image archive layouts.
     for d in IMG_CANDIDATES:
         if d.exists():
             return d
+    # None of the candidates exist -> raise with a clear message.
     raise FileNotFoundError("Could not find 'data/train-image' or 'data/train-image/image'.")
 
-IMG_ROOT = _resolve_image_root()
+IMG_ROOT = _resolve_image_root()  # resolved base path where training images live
 def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
     """chore: Will complete later
     """
@@ -134,3 +141,39 @@ class ISICDataset(Dataset):
 
         # return the image tensor (or PIL if no tfm), integer label, and path as string
         return img, label, str(path)
+
+def set_seed(s: int = 42):
+    # set random seeds for python/numpy/torch to make experiments reproducible
+    random.seed(s); np.random.seed(s)
+    torch.manual_seed(s); torch.cuda.manual_seed_all(s)
+    # enable cuDNN benchmark for potentially faster runtime (may affect reproducibility)
+    torch.backends.cudnn.benchmark = True
+
+def get_isic2020_data(seed: int = 42):
+    # load metadata and split into train / val / test (stratified by label)
+    df = load_metadata()
+    X = df.image_name; y = df.target.astype(int)
+    # first split off a 10% test set
+    Xt, Xte, yt, yte = train_test_split(X, y, test_size=0.1, stratify=y, random_state=seed)
+    # from remaining, split ~11.1% to get ~10% of original as validation
+    # so final split is 80% train, 10% val, 10% test
+    Xtr, Xv, ytr, yv = train_test_split(Xt, yt, test_size=0.111, stratify=yt, random_state=seed)  # ~10% val
+    return (
+        pd.DataFrame({"image_name": Xtr, "target": ytr}),
+        pd.DataFrame({"image_name": Xv, "target": yv}),
+        pd.DataFrame({"image_name": Xte, "target": yte}),
+    )
+
+def get_isic2020_data_loaders(bs: int = 32, workers: int = 2, seed: int = 42):
+    # build DataLoaders for train, val, and test sets using the minimal transforms
+    set_seed(seed)
+    tr, v, te = get_isic2020_data(seed)
+    ttf, etf = get_transforms()
+    trd = ISICDataset(tr, IMG_ROOT, ttf)
+    vd  = ISICDataset(v, IMG_ROOT, etf)
+    td  = ISICDataset(te, IMG_ROOT, etf)
+    return (
+        DataLoader(trd, batch_size=bs, shuffle=True,  num_workers=workers, pin_memory=True),
+        DataLoader(vd,  batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True),
+        DataLoader(td,  batch_size=bs, shuffle=False, num_workers=workers, pin_memory=True),
+    )
