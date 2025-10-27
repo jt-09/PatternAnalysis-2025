@@ -75,6 +75,34 @@ def evaluate_on_test(
         test_auc = float("nan")  # handle edge-cases gracefully
 
     print(f"[Test] Accuracy: {test_acc:.3f} | AUC ROC: {test_auc:.3f}")
+    # ---- plots: ROC + Confusion Matrix ----
+    reports = (DATA_ROOT.parent / "reports").resolve()
+    reports.mkdir(parents=True, exist_ok=True)
+
+    # ROC curve
+    plt.figure(figsize=(6, 5))
+    RocCurveDisplay.from_predictions(all_labels, all_probs)
+    plt.title("Test ROC Curve")
+    plt.grid(True, alpha=0.3)
+    plt.savefig(reports / "test_roc.png", dpi=180, bbox_inches="tight")
+    plt.close()
+
+    # Confusion matrix (at argmax-threshold)
+    cm = confusion_matrix(all_labels, all_preds, labels=[0, 1])
+    plt.figure(figsize=(5, 4))
+    plt.imshow(cm, cmap="Blues")
+    plt.title("Confusion Matrix (argmax)")
+    plt.colorbar()
+    plt.xticks([0, 1], ["Normal (0)", "Melanoma (1)"])
+    plt.yticks([0, 1], ["Normal (0)", "Melanoma (1)"])
+    for (i, j), v in np.ndenumerate(cm):
+        plt.text(j, i, str(v), ha="center", va="center")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+    plt.savefig(reports / "test_confusion_matrix.png", dpi=180, bbox_inches="tight")
+    plt.close()
+
     return test_acc, test_auc
 
 
