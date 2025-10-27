@@ -1,1 +1,6 @@
 data/
+.venv/
+recognition/Siamese_network_s4786177/ISIC2020_Explorer.ipynb
+recognition/Siamese_network_s4786177/explorer_dataset.py
+recognition/Siamese_network_s4786177/analyse_dataset.py
+.vscode/settings.json
