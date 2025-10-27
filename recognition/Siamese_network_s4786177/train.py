@@ -173,7 +173,29 @@ def train_model(
         plt.savefig(reports / "acc.png", dpi=180, bbox_inches="tight")
         plt.close()
 
-    
+    # -------- final plots (loss + acc + auc) --------
+    ep = np.arange(1, len(history["val_auc"]) + 1)
+
+    # Loss
+    plt.figure(figsize=(6,4))
+    plt.plot(ep, history["train_loss"], marker="o", label="Train Loss")
+    plt.plot(ep, history["val_loss"],   marker="o", label="Val Loss")
+    plt.title("Loss over epochs"); plt.xlabel("Epoch"); plt.ylabel("Loss"); plt.grid(True); plt.legend()
+    plt.savefig(reports / "ce_loss.png", dpi=180, bbox_inches="tight"); plt.close()
+
+    # Accuracy (already saved as acc.png during training: keep a final write too)
+    plt.figure(figsize=(6,4))
+    plt.plot(ep, history["train_acc"], marker="o", label="Train Acc")
+    plt.plot(ep, history["val_acc"],   marker="o", label="Val Acc")
+    plt.title("Accuracy over epochs"); plt.xlabel("Epoch"); plt.ylabel("Accuracy"); plt.grid(True); plt.legend()
+    plt.savefig(reports / "ce_acc.png", dpi=180, bbox_inches="tight"); plt.close()
+
+    # AUC
+    plt.figure(figsize=(6,4))
+    plt.plot(ep, history["train_auc"], marker="o", label="Train AUC")
+    plt.plot(ep, history["val_auc"],   marker="o", label="Val AUC")
+    plt.title("AUC over epochs"); plt.xlabel("Epoch"); plt.ylabel("AUC"); plt.grid(True); plt.legend()
+    plt.savefig(reports / "ce_auc.png", dpi=180, bbox_inches="tight"); plt.close()
 
 
 if __name__ == "__main__":
