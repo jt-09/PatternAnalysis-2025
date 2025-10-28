@@ -55,32 +55,25 @@ def load_metadata() -> pd.DataFrame:  # read and normalize the metadata csv into
     # Heuristic normalize: try to find reasonable column names users see in ISIC
     cols = {c.lower(): c for c in df.columns}  # map lowercase name -> original name for robust lookup
 
-    def pick(*names):  # small helper to pick the first matching column name from several aliases
-        for n in names:
-            if n in cols:
-                return cols[n]  # return the original column name that matched
-        return None
+    cols = {c.lower(): c for c in df.columns}
+    c_isic = cols.get("isic_id") or cols.get("image_id") or cols.get("image_name")
+    c_pid  = cols.get("patient_id") or cols.get("lesion_id")
+    c_tgt  = cols.get("target") or cols.get("melanoma") or cols.get("label") or cols.get("benign_malignant")
+    if c_isic is None or c_pid is None or c_tgt is None:
+        raise ValueError(f"Need isic_id/patient_id/target in metadata. Columns={list(df.columns)}")
 
-    # try a set of common names for the image id column
-    c_img = pick("image_name", "filename", "file_name", "image_id", "isic_id")
-    # try a set of common names for the target/label column
-    c_tgt = pick("target", "melanoma", "label", "diagnosis", "benign_malignant")
+    out = df[[c_isic, c_pid, c_tgt]].copy()
+    out.columns = ["isic_id", "patient_id", "target"]
 
-    # If we could not find a suitable image column, raise an informative error
-    if c_img is None:
-        raise ValueError(f"Could not find an image column in metadata. Columns={list(df.columns)}")
-    # If we could not find a suitable target column, raise an informative error
-    if c_tgt is None:
-        raise ValueError(f"Could not find a target/label column in metadata. Columns={list(df.columns)}")
+    # many ISIC archives name files as "<isic_id>.jpg"
+    out["image_name"] = out["isic_id"].astype(str)
 
-    out = df[[c_img, c_tgt]].copy()  # select only the two columns we need and copy to avoid view issues
-    out.columns = ["image_name", "target"]  # rename to a stable, minimal API for downstream code
-
-    # normalize target to {0,1} if needed (handle strings like 'benign'/'malignant')
+    # normalize target to {0,1}
     if out["target"].dtype == object:
         out["target"] = out["target"].str.lower().map({"benign": 0, "malignant": 1}).astype(int)
 
-    return out  # return the cleaned dataframe
+    # final column order
+    return out[["image_name", "target", "patient_id", "isic_id"]]
 
 # possible locations for the images folder (for fallback issues)
 IMG_CANDIDATES = [DATA_ROOT / "train-image" / "image", DATA_ROOT / "train-image"]  
