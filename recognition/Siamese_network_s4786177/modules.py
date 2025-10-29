@@ -14,16 +14,6 @@ import torch.nn as nn                   # neural network modules
 from torchvision import models          # pretrained ResNet50 (allowed to use from ed)
 import torch.nn.functional as F         # functional API for activations, losses, etc.
 
-# -------------------------- helpers --------------------------
-# optimal initialization method for neural networks that use ReLU activation functions.
-# idea taken from https://towardsdatascience.com/kaiming-he-initialization-in-neural-networks-math-proof-73b9a0d845c4/
-def _init_linear_stack(module: nn.Module, nonlinearity: str = "relu") -> None:
-    """Kaiming init for all Linear layers in a stack."""
-    for m in module.modules():
-        if isinstance(m, nn.Linear):
-            nn.init.kaiming_normal_(m.weight, nonlinearity=nonlinearity)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
 
 # -------------------------- components --------------------------
 class FeatureExtractor(nn.Module):
