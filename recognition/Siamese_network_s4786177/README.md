@@ -21,24 +21,25 @@ insert figure: high-level architecture diagram (two images → shared ResNet50 �
 
 The primary goal was to leverage a pretrained ResNet50 backbone so the model could learn strong visual features from dermoscopic images with limited training time. The siamese-style design (shared backbone producing embeddings) was chosen because it naturally extends to metric-learning approaches (triplet loss or contrastive loss) if needed later. The small MLP projection head (2048 → 512 → 256 → emb_dim) was chosen to reduce the backbone output to a compact embedding while keeping sufficient capacity for classification.
 In `modules.py` it can be seen that the feature extractor uses a pretrained ResNet50 whose final fc was replaced by an identity and followed by a sequential projection head. The MLP head uses ReLU non-linearities and dropout; linear layers were initialized with Kaiming normal initialization. The classifier head is a single linear layer mapping the embedding to 2 logits.
+
 ## Dataset and preprocessing
+The initial ISIC 2020: Skin Cancer Detection challenge provided a large collection of high-resolution dermoscopic images. However, a pre-processed version was adopted to facilitate faster training and resource efficiency. This version contains image files resized to a fixed resolution of $224 \times 224$ pixels, along with the associated metadata in `train-metadata.csv`. The important fields in the metadata are the unique image identifier (`isic_id`), a randomized `patient_id`, and the `target` column, which provides the binary class label: benign (0) or malignant (1). This dataset was then further divided in `dataset.py` using stratified sampling to create the $\mathbf{80/10/10}$ train, validation, and test splits. Given the class imbalance, the training set employs a weighted sampler to ensure equal representation of both classes in each batch, mitigating the issue.
+### Image Augmentations
 
-explain the dataset(yet to do)
+The Siamese Network was trained using various image augmentation techniques, defined within the `get_transforms` function in `dataset.py`. This was important for improving the model's resilience and preventing overfitting which is a valid concern given the high class imbalance in the dataset. The main training transform, `train_t`, applies sequential augmentation steps: It uses a RandomResizedCrop to $224 \times 224$ pixels, which applies a scale variation (between $0.85$ and $1.0$) and positional shifts. This is followed by RandomHorizontalFlip and RandomVerticalFlip (both with a $p=0.5$ probability), and RandomRotation (up to $15^\circ$). These spatial transformations ensure the model learns to recognise the correct class independent of the lesion's orientation. Additionally, ColorJitter is applied with small variations in brightness ($0.10$), contrast ($0.10$), saturation ($0.05$), and hue ($0.02$). The final steps convert the image to a PyTorch Tensor and apply standard ImageNet normalization.
 
-Preprocessing and augmentations (see `get_transforms()` in `dataset.py`):
+```python
+# from dataset.py -> get_transforms
+train_t = transforms.Compose([
+    transforms.RandomResizedCrop(224, scale=(0.85, 1.0)),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5),
+    transforms.RandomRotation(degrees=15, fill=0),
+    transforms.ColorJitter(brightness=0.10, contrast=0.10, saturation=0.05, hue=0.02),
+    transforms.ToTensor(),   # convert PIL image to torch.FloatTensor [0,1]
+    norm                     # normalize channels to mean/std
+])
 
-- Train transforms:
-  - RandomResizedCrop(224, scale=(0.85, 1.0))
-  - RandomHorizontalFlip(p=0.5)
-  - RandomVerticalFlip(p=0.5)
-  - RandomRotation(degrees=15)
-  - ColorJitter(brightness=0.10, contrast=0.10, saturation=0.05, hue=0.02)
-  - ToTensor()
-  - Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
-
-- Eval transforms:
-  - Resize(256), CenterCrop(224), ToTensor(), Normalize(...)
-why use augmentations? explain here (yet to do)
 Insert image: dataset samples (example benign / malignant images)
 
 ## Model architecture details
