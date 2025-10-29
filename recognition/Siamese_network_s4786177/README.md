@@ -39,7 +39,7 @@ train_t = transforms.Compose([
     transforms.ToTensor(),   # convert PIL image to torch.FloatTensor [0,1]
     norm                     # normalize channels to mean/std
 ])
-
+```
 Insert image: dataset samples (example benign / malignant images)
 
 ## Model architecture details
