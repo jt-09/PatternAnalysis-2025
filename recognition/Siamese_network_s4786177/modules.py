@@ -67,23 +67,6 @@ class FeatureExtractor(nn.Module):
             emb = torch.nn.functional.normalize(emb, p=2, dim=1)
         return emb
 
-# https://github.com/shivsondhi/Triplet-Loss/blob/master/triplet_loss_functions.py for reference/ideation
-class TripletLoss(nn.Module):
-    """
-    Triplet loss with margin:
-        L = max(0, ||A-P||_2 - ||A-N||_2 + margin)
-    Encourages the anchor to be closer to the positive than to the negative by at least 'margin'.
-    """
-    def __init__(self, margin: float = 1.0) -> None:
-        super().__init__()
-        self.margin = float(margin)
-
-    def forward(self, a: torch.Tensor, p: torch.Tensor, n: torch.Tensor) -> torch.Tensor:
-        d_ap = torch.norm(a - p, p=2, dim=1)
-        d_an = torch.norm(a - n, p=2, dim=1)
-        return F.relu(d_ap - d_an + self.margin).mean()
-    
-
 class ClassifierHead(nn.Module):
     """
     Linear 2-class head operating on embeddings.
