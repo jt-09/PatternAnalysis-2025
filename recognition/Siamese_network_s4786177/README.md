@@ -109,10 +109,13 @@ where `lambda_triplet` (default `1.0`) weights the triplet loss so that both cla
 
 ### Youden's Threshold and Clinical Relevance
 
+![alt text](youdens.png)
+Reference: (Voršilák, Kolář, Čmelo, & Svozil, 2020)
+
 In medical screening and imbalanced classification, relying on the default 0.5 probability threshold is inadequate, as it typically biases the model toward the majority class (Benign). A fixed 0.5 threshold often leads to high Specificity but unacceptably low Sensitivity (missing too many cancers) in imbalanced datasets.
 
 - Rationale for Need: A custom threshold is needed to balance these two error types, as false negative errors (missing a disease) are often more critical than false positive errors (false alarms).
-- Purpose: The Youden Threshold is the probability cutoff that maximizes Youden's J statistic ($J$). The formula is defined as: 
+- Purpose: The Youden Threshold is the probability cutoff that maximizes Youden's J statistic (J). The formula is defined as: 
 
     `J = Sensitivity + Specificity - 1`
 
@@ -238,7 +241,6 @@ Student: Jay Thakkar
 Student number: s4786177
 
 ## References
-Yalniz, I. Z., Jégou, H., Chen, K., Paluri, M., & Mahajan, D. (2019). Billion-scale semi-supervised learning for image classification. arXiv. https://arxiv.org/abs/1905.00546
 
 Mukherjee, S. (2022, August 18). The Annotated ResNet-50 | Towards Data Science. Retrieved October 30, 2025, from Towards Data Science website: https://towardsdatascience.com the-annotated-resnet-50-a6c536034758/
 
@@ -246,4 +248,6 @@ Mukherjee, S. (2022, August 18). The Annotated ResNet-50 | Towards Data Science.
 
 ‌nadereafshar. (2024, August 6). ISIC 2024 Lesion Segmentation. Retrieved October 30, 2025, from Kaggle.com website: https://www.kaggle.com/code/nadereafshar/isic-2024-lesion-segmentation
 
-‌
+‌Voršilák, M., Kolář, M., Čmelo, I., & Svozil, D. (2020). SYBA: Bayesian estimation of synthetic accessibility of organic compounds. Journal of Cheminformatics, 12(1). https://doi.org/10.1186/s13321-020-00439-2
+
+‌Yalniz, I. Z., Jégou, H., Chen, K., Paluri, M., & Mahajan, D. (2019). Billion-scale semi-supervised learning for image classification. arXiv. https://arxiv.org/abs/1905.00546
