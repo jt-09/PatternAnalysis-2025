@@ -64,7 +64,7 @@ def _batch_hard_triplet_loss(
     return loss[valid].mean()
 
 def train_model(  
-    epochs: int = 5,
+    epochs: int = 10,
     batch_size: int = 32,
     lr: float = 1e-4,
     emb_dim: int = 128,

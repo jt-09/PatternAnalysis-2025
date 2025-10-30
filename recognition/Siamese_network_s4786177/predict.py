@@ -154,7 +154,7 @@ def evaluate_on_test(
         try:
             X = np.concatenate(all_embs, axis=0)
             y = y_true
-            tsne = TSNE(n_components=2, init="random", perplexity=30, learning_rate="auto", n_iter=1000)
+            tsne = TSNE(n_components=2, init="random", perplexity=30, learning_rate="auto")
             X2 = tsne.fit_transform(X)
 
             plt.figure(figsize=(6, 5))
