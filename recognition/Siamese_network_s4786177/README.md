@@ -16,19 +16,29 @@ The goal was to build a binary classifier (normal vs melanoma) for the ISIC 2020
 The Siamese-style network uses a shared feature extractor (ResNet50) to produce low-dimensional embeddings for input images. The embeddings are passed through a small MLP head to produce 2-class logits (normal / melanoma). During training the model is optimized with standard cross-entropy loss. Training, evaluation and inference scripts (`train.py`, `predict.py`) produce plots (loss, accuracy, AUC, confusion matrices, and t-SNE) saved under the `reports/` folder.
 
 
-##  Model Architecture Details: The WSiamese Network Design
+##  Model Architecture Details: The Siamese Network Design
 The network is structured as a Siamese architecture, utilizing a single, shared set of weights across two conceptually parallel branches (for metric learning). The primary goal is to simultaneously optimize for image classification and a highly structured, discriminative feature space.
 
 The model, wrapped by SiameseNet, comprises a sequential arrangement of two modules: the Feature Extractor and the Classifier Head.
 
 ### What is a Siamese neural network
-![alt text](siam_1.png)
+
+![alt text](siamese_image.png)
+Reference: (datahacker.rs, 2018)
+
 A Siamese Network is a specific type of neural network architecture designed not for general classification, but generally for similarity measurement and metric learning between two inputs(reference). As illustrated in the provided diagram , the network consists of two or more identical subnetworks (often referred to as "twins") that are constrained to share the exact same set of weights and configuration. When two input images, such as a pair of skin lesions are fed into the network, each subnetwork processes its image independently to produce a corresponding high-dimensional feature vector, known as an embedding. Because the weights are shared, the network learns a mapping where if the two input images are inherently similar (e.g., both are benign lesions), their resulting embeddings will be located very close together in the feature space. Conversely, if the images are dissimilar (e.g., one benign and one malignant), their embeddings will be spatially distant (farther away). The final stage involves calculating a distance metric (like Euclidean or cosine distance) between these two output embeddings to quantify their similarity score. This inherent structure makes the Siamese model highly effective for tasks like the lesion classification in the dataset, where minimizing the distance between same-class embeddings enhances the model's fundamental ability to discriminate and learn robust class boundaries.
 
 > insert image of architecture diagram here (yet to do)
 
 ### Feature Extractor
-This module is responsible for projecting the raw input image into a compact, low-dimensional vector space.Backbone (ResNet50): A ResNet50 network, pretrained on ImageNet, serves as the foundational backbone. Transfer learning is employed by loading the ImageNet weights to leverage learned hierarchical visual features. The standard 1,000-class classification layer is replaced with `nn.Identity().Output`: The output from the global average pooling layer yields a 2048-dimensional feature vector.
+
+![alt text](resnet50.png)
+Reference: (Mukherjee, 2022)
+
+This module is responsible for projecting the raw input image into a compact, low-dimensional vector space.
+- Backbone (ResNet50): A ResNet50 network serves as the foundational backbone. As shown in the diagram , the network consists of an initial sequence of convolutional and pooling layers followed by four stages of stacked Convolutional Blocks and Identity Blocks. Transfer learning is used by loading the ImageNet-1K pre-trained weights (used when pretrained=True) to use hierarchical visual features learned from millions of general images (Yalniz et al., 2019).
+- Modification: The standard 1,000-class classification layer (the final FC layer in the diagram) is replaced with nn.Identity(). This modification turns the classification network into a feature extractor.
+- Output: The output from the global average pooling layer (Avg Pool) results in a 2048-dimensional feature vector, which is the input to the following Projection Head.
 ### Projection Head (MLP): 
 Projection Head (MLP)The Projection Head is a small Multi-Layer Perceptron (MLP) defined in modules.py that refines the 2048-dimensional output from the ResNet50 backbone into the final, smaller embedding. Its job is to compress and structure the features.Structure: The head uses a three-layer sequence of transformations:Python# from modules.py
 ```python
@@ -54,7 +64,15 @@ The initial ISIC 2020: Skin Cancer Detection challenge provided a large collecti
 Oversampling was used during training to deal with the strong class imbalance in the melanoma dataset, where there are many more benign (non-cancerous) images than melanoma (cancerous) ones. Without balancing, the model would mostly see benign examples and could easily learn to always predict "benign," which would look accurate but fail to detect real melanomas. To fix this, the data loader in dataset.py uses a `WeightedRandomSampler`, which increases the chances of selecting melanoma images so that each training batch contains a more even mix of both classes. This helps the model learn what makes melanomas different instead of being biased toward the majority class. Oversampling is especially important here because the model also uses metric learning (Triplet Loss), which compares examples from both classes. Balanced batches ensure that the model always has enough positive and negative examples to learn useful differences between them. 
 ### Image Augmentations
 
-The Siamese Network was trained using various image augmentation techniques, defined within the `get_transforms` function in `dataset.py`. This was important for improving the model's resilience and preventing overfitting which is a valid concern given the high class imbalance in the dataset. The main training transform, `train_t`, applies sequential augmentation steps: It uses a RandomResizedCrop to $224 \times 224$ pixels, which applies a scale variation (between $0.85$ and $1.0$) and positional shifts. This is followed by RandomHorizontalFlip and RandomVerticalFlip (both with a $p=0.5$ probability), and RandomRotation (up to $15^\circ$). These spatial transformations ensure the model learns to recognise the correct class independent of the lesion's orientation. Additionally, ColorJitter is applied with small variations in brightness ($0.10$), contrast ($0.10$), saturation ($0.05$), and hue ($0.02$). The final steps convert the image to a PyTorch Tensor and apply standard ImageNet normalization.
+The Siamese Network was trained using a set of image augmentations defined in the `get_transforms` function in `dataset.py`. These augmentations improve robustness and help prevent overfitting, which is important given the class imbalance in the dataset. The main training transform, `train_t`, applies the following steps:
+
+- `RandomResizedCrop` to 224x224 pixels (scale range 0.85–1.0) with positional shifts
+- `RandomHorizontalFlip` (p=0.5)
+- `RandomVerticalFlip` (p=0.5)
+- `RandomRotation` up to 15 degrees
+- `ColorJitter` with small adjustments: brightness=0.10, contrast=0.10, saturation=0.05, hue=0.02
+
+Finally, images are converted to a PyTorch tensor and normalized using the standard ImageNet mean and standard deviation.
 
 ```python
 # from dataset.py -> get_transforms
@@ -79,8 +97,8 @@ The model is trained with a multi-task loss that combines classification and met
     - Batch-hard mining: implemented in `_batch_hard_triplet_loss` in `train.py`. The strategy selects the hardest triplet within the batch: for each Anchor, it finds the farthest Positive example and the closest Negative example. This intentional focus on the most challenging embeddings significantly improves the local separation around the decision boundary in the embedding space.
 
 
-![alt text](1ADu4F-SoI-cLqyO0IqqBrQ.webp)
-
+![alt text](triplet_loss.jpg)
+Reference: (Mensah, Appati, Boateng, Ocran, & Asiedu, 2023)
 
 The final loss used for backpropagation is:
 
@@ -177,3 +195,12 @@ r to `train.py`/`predict.py` so the commands above can be run without modifying 
 
 Student: Jay Thakkar
 Student number: s4786177
+
+## References
+Yalniz, I. Z., Jégou, H., Chen, K., Paluri, M., & Mahajan, D. (2019). Billion-scale semi-supervised learning for image classification. arXiv. https://arxiv.org/abs/1905.00546
+
+Mukherjee, S. (2022, August 18). The Annotated ResNet-50 | Towards Data Science. Retrieved October 30, 2025, from Towards Data Science website: https://towardsdatascience.com the-annotated-resnet-50-a6c536034758/
+
+‌Mensah, J. A., Appati, J. K., Boateng, E. K. A., Ocran, E., & Asiedu, L. (2023). FaceNet recognition algorithm subject to multiple constraints: Assessment of the performance. Scientific African, 23, e02007–e02007. https://doi.org/10.1016/j.sciaf.2023.e02007
+
+‌
