@@ -18,12 +18,13 @@ The goal was to build a binary classifier (normal vs melanoma) for the ISIC 2020
 The Siamese-style network uses a shared feature extractor (ResNet50) to produce low-dimensional embeddings for input images. The embeddings are passed through a small MLP head to produce 2-class logits (normal / melanoma). During training the model is optimized with standard cross-entropy loss. Training, evaluation and inference scripts (`train.py`, `predict.py`) produce plots (loss, accuracy, AUC, confusion matrices, and t-SNE) saved under the `reports/` folder.
 
 
-
 ###  Model Architecture Details: The Siamese Network Design
 The network is structured as a Siamese architecture, utilizing a single, shared set of weights across two conceptually parallel branches (for metric learning). The primary goal is to simultaneously optimize for image classification and a highly structured, discriminative feature space.
 
 The model, wrapped by SiameseNet, comprises a sequential arrangement of two modules: the Feature Extractor and the Classifier Head.
 
+#### What is a Siamese neural network
+A Siamese Network is a specific type of neural network architecture designed not for general classification, but generally for similarity measurement and metric learning between two inputs(reference). As illustrated in the provided diagram , the network consists of two or more identical subnetworks (often referred to as "twins") that are constrained to share the exact same set of weights and configuration. When two input images, such as a pair of skin lesions are fed into the network, each subnetwork processes its image independently to produce a corresponding high-dimensional feature vector, known as an embedding. Because the weights are shared, the network learns a mapping where if the two input images are inherently similar (e.g., both are benign lesions), their resulting embeddings will be located very close together in the feature space. Conversely, if the images are dissimilar (e.g., one benign and one malignant), their embeddings will be spatially distant (farther away). The final stage involves calculating a distance metric (like Euclidean or cosine distance) between these two output embeddings to quantify their similarity score. This inherent structure makes the Siamese model highly effective for tasks like the lesion classification in the dataset, where minimizing the distance between same-class embeddings enhances the model's fundamental ability to discriminate and learn robust class boundaries.
 
 insert figure: high-level architecture diagram (two images → shared ResNet50 → embedding → MLP classifier) (yet to do)
 
@@ -32,7 +33,7 @@ insert figure: high-level architecture diagram (two images → shared ResNet50 �
  #### Feature Extractor
  This module is responsible for projecting the raw input image into a compact, low-dimensional vector space.Backbone (ResNet50): A ResNet50 network, pretrained on ImageNet, serves as the foundational backbone. Transfer learning is employed by loading the ImageNet weights to leverage learned hierarchical visual features. The standard 1,000-class classification layer is replaced with nn.Identity().Output: The output from the global average pooling layer yields a 2048-dimensional feature vector.
  #### Projection Head (MLP): 
- This head transforms the backbone's features into the final, lower-dimensional embedding. It is a three-layer Multi-Layer Perceptron (MLP):$$\mathbf{2048} \xrightarrow{\text{Linear}} 512 \xrightarrow{\text{Linear}} 256 \xrightarrow{\text{Linear}} \mathbf{\text{emb\_dim}}$$Structure: The sequence includes ReLU activation and Dropout p=0.6 layers following the first two linear transformations, serving as non-linearities and regularization.Initialization: The linear layers within the MLP head are initialized using Kaiming normal initialization (He initialization), which is appropriate for layers followed by a ReLU non-linearity.Embedding: The final output is a 128-dim vector (default emb_dim. This vector undergoes L2-normalization (torch.nn.functional.normalize) before being outputted, which is a prerequisite for effective metric-learning losses that rely on angular or cosine distance in a normalized space.
+ This head transforms the backbone's features into the final, lower-dimensional embedding. It is a three-layer Multi-Layer Perceptron (MLP):$$\mathbf{2048} \xrightarrow{\text{Linear}} 512 \xrightarrow{\text{Linear}} 256 \xrightarrow{\text{Linear}} \mathbf{\text{emb\_dim}}$$Structure: The sequence includes ReLU activation and Dropout p=0.6 layers following the first two linear transformations, serving as non-linearities and regularization.Initialization: The linear layers within the MLP head are initialized using Kaiming normal initialization (He initialization), which is appropriate for layers followed by a ReLU non-linearity.Embedding: The final output is a 128-dim vector default emb_dim. This vector undergoes L2-normalization (torch.nn.functional.normalize) before being outputted, which is a prerequisite for effective metric-learning losses that rely on angular or cosine distance in a normalized space.
 
 ## Dataset and preprocessing
 The initial ISIC 2020: Skin Cancer Detection challenge provided a large collection of high-resolution dermoscopic images. However, a pre-processed version was adopted to facilitate faster training and resource efficiency. This version contains image files resized to a fixed resolution of 224x224 along with the associated metadata in `train-metadata.csv`. The important fields in the metadata are the unique image identifier (`isic_id`), a randomized `patient_id`, and the `target` column, which provides the binary class label: benign (0) or malignant (1). This dataset was then further divided in `dataset.py` using stratified sampling to create the 80/10/10 train, validation, and test splits. Given the class imbalance, the training set employs a weighted sampler to ensure equal representation of both classes in each batch, mitigating the issue.
@@ -57,6 +58,16 @@ train_t = transforms.Compose([
 ```
 Insert image: dataset samples (example benign / malignant images)
 
+## Loss function
+The model is optimized using a multi-task loss function that combines two critical objectives to create a highly robust and discriminative model. The total loss is a weighted sum of the standard Cross-Entropy Loss ($\text{Loss}_{\text{CE}}$) and the Batch-Hard Triplet Loss ($\text{Loss}_{\text{Triplet}}$).
+
+- Cross-Entropy Loss ($\text{Loss}_{\text{CE}}$): This is the classification component, calculated on the output logits from the `ClassifierHead`. It quantifies the difference between the predicted probability distribution over the classes and the true one-hot encoded label. Its function, implemented in train.py as loss_ce = ce(logits, y), is to promote the direct classification accuracy of the network.
+
+- Batch-Hard Triplet Loss ($\text{Loss}_{\text{Triplet}}$): This is the metric learning component, calculated on the L2-normalized feature embeddings returned by the FeatureExtractor. Its purpose is to structure the embedding space geometrically, ensuring that the distance between anchor-positive pairs ($d(A, P)$) is smaller than the distance between anchor-negative pairs ($d(A, N)$) by a specified $\alpha$ margin (default $0.2$, passed as triplet_margin).
+    - Batch-Hard mining strategy: This method, implemented in the function _batch_hard_triplet_loss in train.py, is used to select the most informative examples in each batch. For every anchor (A), it selects the farthest positive ($P_{hard}$) and the closest negative ($N_{hard}$). This selection focuses the training effort on the most challenging, boundary-pushing examples, significantly improving the feature space's local separation.
+
+
+The final loss used for backpropagation is the sum of these two components: loss = loss_ce + lambda_triplet * loss_tri where $\mathbf{\lambda_{\text{triplet}}}$ (set to 1.0) ensures both the direct classification objective and the structural metric learning objective contribute equally to the overall optimization, leading to a model that is both accurate and produces highly separable embeddings.
 ## Training, evaluation and saved outputs
 
 Running `train.py` will train the model and save the best checkpoint (by validation AUC) to `siamese_ce.pt` (or the `save_path` you pass). The script also writes per-epoch plots to `reports/` (loss, accuracy, AUC). Example outputs generated by the repository include:
@@ -71,6 +82,9 @@ Running `train.py` will train the model and save the best checkpoint (by validat
 
 Example usage (from project folder):
 yet to do
+
+## Interpreting the results
+
 
 ## Dependencies (recommended)
 
