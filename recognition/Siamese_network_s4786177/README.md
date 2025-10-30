@@ -33,7 +33,20 @@ insert figure: high-level architecture diagram (two images â†’ shared ResNet50 â
  #### Feature Extractor
  This module is responsible for projecting the raw input image into a compact, low-dimensional vector space.Backbone (ResNet50): A ResNet50 network, pretrained on ImageNet, serves as the foundational backbone. Transfer learning is employed by loading the ImageNet weights to leverage learned hierarchical visual features. The standard 1,000-class classification layer is replaced with nn.Identity().Output: The output from the global average pooling layer yields a 2048-dimensional feature vector.
  #### Projection Head (MLP): 
- This head transforms the backbone's features into the final, lower-dimensional embedding. It is a three-layer Multi-Layer Perceptron (MLP):$$\mathbf{2048} \xrightarrow{\text{Linear}} 512 \xrightarrow{\text{Linear}} 256 \xrightarrow{\text{Linear}} \mathbf{\text{emb\_dim}}$$Structure: The sequence includes ReLU activation and Dropout p=0.6 layers following the first two linear transformations, serving as non-linearities and regularization.Initialization: The linear layers within the MLP head are initialized using Kaiming normal initialization (He initialization), which is appropriate for layers followed by a ReLU non-linearity.Embedding: The final output is a 128-dim vector default emb_dim. This vector undergoes L2-normalization (torch.nn.functional.normalize) before being outputted, which is a prerequisite for effective metric-learning losses that rely on angular or cosine distance in a normalized space.
+Projection Head (MLP)The Projection Head is a small Multi-Layer Perceptron (MLP) defined in modules.py that refines the 2048-dimensional output from the ResNet50 backbone into the final, smaller embedding. Its job is to compress and structure the features.Structure: The head uses a three-layer sequence of transformations:Python# from modules.py
+self.head = nn.Sequential(
+    nn.Linear(2048, 512),
+    nn.ReLU(inplace=True),
+    nn.Dropout(drop), # drop=0.6 by default
+    nn.Linear(512, 256),
+    nn.ReLU(inplace=True),
+    nn.Dropout(drop),
+    nn.Linear(256, emb_dim), # emb_dim=128 by default
+)
+- The Linear layers perform the compression: 2048 -> 512 -> 256 -> 128.
+- ReLU provides the necessary non-linearity, and Dropout (p=0.6) acts as a regularization technique to prevent overfitting
+- Initialization: The weights of these linear layers were specifically initialized using Kaiming normal initialization (He initialization), a standard practice for layers followed by ReLU, to ensure stable learning at the start of training.
+- Final Embedding: The final output is the 128-dim embedding vector. This vector is L2-normalized using `torch.nn.functional.normalize` in the FeatureExtractor's forward pass. This normalization is required because the Triplet Loss component relies on a distance calculation in a normalized feature space.
 
 ## Dataset and preprocessing
 The initial ISIC 2020: Skin Cancer Detection challenge provided a large collection of high-resolution dermoscopic images. However, a pre-processed version was adopted to facilitate faster training and resource efficiency. This version contains image files resized to a fixed resolution of 224x224 along with the associated metadata in `train-metadata.csv`. The important fields in the metadata are the unique image identifier (`isic_id`), a randomized `patient_id`, and the `target` column, which provides the binary class label: benign (0) or malignant (1). This dataset was then further divided in `dataset.py` using stratified sampling to create the 80/10/10 train, validation, and test splits. Given the class imbalance, the training set employs a weighted sampler to ensure equal representation of both classes in each batch, mitigating the issue.
