@@ -106,7 +106,9 @@ def evaluate_on_test(
     print(f"[Test] Thr[Youden]: {thr_youden:.4f} | Spec: {spec:.3f} | Sens: {sens:.3f}")
 
     # ---- plots: ROC + Confusion Matrix ----
-    reports = (DATA_ROOT.parent / "reports").resolve()
+    # Save reports inside this Siamese network package directory so all
+    # artifacts remain co-located with the model code.
+    reports = (Path(__file__).parent / "reports").resolve()
     reports.mkdir(parents=True, exist_ok=True)
 
     # ROC curve

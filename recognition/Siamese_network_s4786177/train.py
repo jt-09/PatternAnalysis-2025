@@ -14,6 +14,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
+from pathlib import Path
 
 from dataset import get_isic2020_data_loaders, set_seed, DATA_ROOT
 from modules import SiameseNet
@@ -97,7 +98,9 @@ def train_model(
     # a `reports` directory exists next to the DATA_ROOT where plots will
     # be saved. Track the best validation AUC to decide which checkpoint
     # to persist.
-    reports = (DATA_ROOT.parent / "reports").resolve()
+    # Save reports inside this Siamese network package directory so all
+    # artifacts remain co-located with the model code.
+    reports = (Path(__file__).parent / "reports").resolve()
     reports.mkdir(parents=True, exist_ok=True)
 
     best_auc = -1.0  # best Validation AUC so far
