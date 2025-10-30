@@ -20,6 +20,49 @@ from modules import SiameseNet
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# --- metric-learning utilities (batch-hard triplet) ---
+def _pairwise_distances(emb: torch.Tensor) -> torch.Tensor:
+    """
+    Compute L2 pairwise distances between embeddings (assumes rows are embeddings).
+    """
+    dot = emb @ emb.t()                          # [B,B]
+    sq = torch.diag(dot)                         # [B]
+    dist2 = sq.unsqueeze(1) - 2 * dot + sq.unsqueeze(0)
+    dist2 = torch.clamp(dist2, min=0.0)
+    dist2.fill_diagonal_(0.0)
+    return torch.sqrt(dist2 + 1e-12)
+
+def _batch_hard_triplet_loss(
+    emb: torch.Tensor,
+    labels: torch.Tensor,
+    margin: float = 0.2,
+) -> torch.Tensor:
+    """
+    Batch-hard triplet loss:
+      hardest positive = farthest same-class
+      hardest negative = closest different-class
+    Returns mean over valid anchors. If batch has one class only, returns 0.
+    """
+    if emb.size(0) < 2 or labels.unique().numel() < 2:
+        return emb.new_zeros(())
+    d = _pairwise_distances(emb)                 # [B,B]
+    B = emb.size(0)
+    labels = labels.view(B, 1)
+    same = (labels == labels.t())
+    diff = ~same
+    d_pos = d.clone()
+    d_neg = d.clone()
+    d_pos[~same] = -1e6
+    d_pos.fill_diagonal_(-1e6)
+    d_neg[same] = 1e6
+    hardest_pos = d_pos.max(dim=1).values
+    hardest_neg = d_neg.min(dim=1).values
+    loss = torch.relu(hardest_pos - hardest_neg + margin)
+    valid = (hardest_pos > -1e5) & (hardest_neg < 1e5)
+    if valid.float().sum() == 0:
+        return emb.new_zeros(())
+    return loss[valid].mean()
+
 def train_model(  
     epochs: int = 5,
     batch_size: int = 32,
@@ -27,6 +70,8 @@ def train_model(
     emb_dim: int = 128,
     drop: float = 0.6,
     save_path: str = "siamese_ce.pt",
+    lambda_triplet: float = 1.0,
+    triplet_margin: float = 0.2,
 ) -> None:
     """chore: will do later
     """
@@ -72,10 +117,12 @@ def train_model(
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
-            # Forward pass: the model returns embeddings and logits; use
-            # the logits for classification loss and metric computation.
-            _, logits = model(x)
-            loss = ce(logits, y)
+            # Expecting model(x) -> (embeddings, logits). If your model returns only logits,
+            # obtain embeddings via a helper like model.embed(x).
+            emb, logits = model(x)
+            loss_ce = ce(logits, y)
+            loss_tri = _batch_hard_triplet_loss(emb, y, margin=triplet_margin)
+            loss = loss_ce + lambda_triplet * loss_tri
 
             # backprop and optimizer step
             opt.zero_grad(set_to_none=True)
@@ -85,6 +132,9 @@ def train_model(
             # Update running statistics for loss, accuracy and AUC
             bs = x.size(0)
             train_loss_sum += loss.item() * bs
+            # log components
+            # train_ce_sum   += loss_ce.item() * bs
+            # train_tri_sum  += loss_tri.item() * bs
             train_correct  += (logits.argmax(1) == y).sum().item()
             train_count    += bs
 
@@ -117,12 +167,16 @@ def train_model(
             for x, y, _ in val_loader:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
-                _, logits = model(x)
-                loss = ce(logits, y)
+                emb, logits = model(x)
+                loss_ce = ce(logits, y)
+                loss_tri = _batch_hard_triplet_loss(emb, y, margin=triplet_margin)
+                loss = loss_ce + lambda_triplet * loss_tri
 
                 # Update validation accumulators similar to training
                 bs = x.size(0)
                 val_loss_sum += loss.item() * bs
+                # val_ce_sum   += loss_ce.item() * bs
+                # val_tri_sum  += loss_tri.item() * bs
                 val_correct  += (logits.argmax(1) == y).sum().item()
                 val_count    += bs
 
