@@ -172,7 +172,7 @@ The project was designed to target around 0.8 test accuracy (when trained end-to
 
 Insert image: example training plots (loss/acc/auc)
 
-r to `train.py`/`predict.py` so the commands above can be run without modifying the scripts. Tell me which you'd like next.
+r to `train.py`/`predict.py` so the commands above can be run without modifying the scripts. 
 # Siamese Network - s4786177
 
 Student: Jay Thakkar
