@@ -86,6 +86,46 @@ yet to do
 ## Interpreting the results
 
 
+Observing the training log reveals that the model achieved its peak generalization performance early in the process, with the highest Validation AUC of 0.908 recorded at Epoch 2. Although training metrics continued to improve significantly, reaching a near-perfect Train AUC of 0.996 by Epoch 10, the Validation AUC subsequently dropped or plateaued. This discrepancy between the rising training performance and the stable-to-dropping validation score clearly indicates that overfitting occurred after the second epoch, which is why the model's best checkpoint was saved at that early point.The model selected by the save-best mechanism (from Epoch 2) was then tested on the independent test set, yielding a strong Test AUC of 0.903 and an overall Test Accuracy of 86.9% (at the default 0.5 threshold).
+
+
+### Accuracy over epochs 
+![alt text](<../../reports/figures/acc final.png>)
+- This graph tracks the classification correctness Correct Predictions / Total samples for both the Train set (blue line) and the Validation set (orange line) across the 10 training iterations (epochs).
+- The Y-axis represents the percentage of images correctly classified. The Train Accuracy shows the model's performance on the data it is actively learning from, while the Validation Accuracy shows how well the model generalizes to unseen data.
+- The Train Accuracy rises steadily, finishing near perfect (~97.5). However, the Validation Accuracy peaks at Epoch 2 and again at Epoch 9 (~95.5) but shows significant dips and instability in between. This large and growing gap between the two curves is a clear visual indicator of overfitting after the initial few epochs.
+
+### AUC Over Epochs
+![alt text](<../../reports/figures/ce_auc final.png>)
+
+- This plot tracks the Area Under the ROC Curve (AUC), which measures the model's overall ability to discriminate between the two classes (Normal vs. Melanoma) across all possible thresholds.
+- An AUC close to 1.0 is ideal. The Validation AUC is the metric used to determine the best model checkpoint because it assesses generalization power.
+- Model interpretation: The Validation AUC peaks highest at Epoch 2 (0.908) and then decreases sharply before recovering slightly late in training. This confirms that the model's best discriminatory power on unseen data was achieved very early. Although the Train AUC continues toward 1.00, the decline in Validation AUC confirms that the model was learning training-specific noise rather than generalizable features, supporting the choice of the Epoch 2 checkpoint.
+
+### Loss over epochs
+![alt text](<../../reports/figures/ce_auc final.png>)
+- This graph displays the magnitude of the Joint Loss (Cross-Entropy + Triplet Loss) that the model is minimizing on both the training and validation sets.
+- Lower loss is better. The Validation Loss serves as a proxy for how well the model's combined classification and metric learning objectives are being achieved on unseen data.
+- The Train Loss decreases consistently, showing the optimization process is successfully driving the total loss down on the training data. The Validation Loss is erratic and does not consistently drop, again reinforcing that the model is having trouble minimizing the combined loss objective for new data points after the first few iterations, which is typical of early overfitting.
+
+### Confusion Matrix (argmax) 
+![alt text](<../../reports/figures/test_confusion_matrix_argmax final.png>)
+- This matrix shows the raw prediction counts on the test set using the default 0.5 probability threshold, representing the standard accuracy classification.
+    - True Negatives (TN) = 2836: Correctly classified Benign cases.
+    - False Positives (FP) = 419: Benign cases incorrectly called Melanoma (False Alarms).
+    - True Positives (TP) = 44: Correctly classified Melanoma cases.
+    - False Negatives (FN) = 14: Melanoma cases incorrectly called Benign (Missed Cancers).
+- This matrix shows a highly conservative model, resulting in a large number of True Negatives but 14 dangerous False Negatives. This threshold is sub-optimal for medical screening as it prioritizes overall accuracy over patient safety.
+
+### Confusion Matrix (Youden threshold)
+![alt text](<../../reports/figures/test_confusion_matrix_threshold final.png>)
+- This matrix shows the raw prediction counts on the test set using the Youden Threshold (0.2192), which is the clinically optimized probability cutoff that maximizes Sensitivity + Specificity.
+    - True Negatives (TN) = 2639: Correctly classified Benign cases.
+    - False Positives (FP) = 616: Benign cases incorrectly called Melanoma (increased False Alarms).
+    - True Positives (TP) = 50: Correctly classified Melanoma cases.
+    - False Negatives (FN) = 8: Melanoma cases incorrectly called Benign (significantly reduced Missed Cancers).
+- By lowering the threshold to 0.2192, the model accepts an increase in False Positives (from 419 to 616) in order to achieve the critical result: the number of False Negatives is cut almost in half (from 14 to 8). This demonstrates that the model, when optimally calibrated, achieves a desirable clinical trade-off, maximizing the detection of the disease (Sensitivity = 86.2%).
+
 ## Dependencies (recommended)
 
 - Python >= 3.8
