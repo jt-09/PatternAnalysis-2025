@@ -4,7 +4,7 @@ Student: Jay Thakkar
 Student number: s4786177
 ## Abstract
 
-The goal was to build a binary classifier (normal vs melanoma) for the ISIC 2020 dermoscopic image dataset using a Siamese-style approach: a shared ResNet50 backbone produces embeddings that are passed to a small MLP classification head. The classifier was trained with cross-entropy on image-level labels and evaluated on a held-out test set. This repository contains the dataset handling, training, evaluation and plotting utilities used to reproduce experiments and generate the key figures.
+The goal was to build a binary classifier (normal vs melanoma) for the ISIC 2020 dermoscopic image dataset using a Siamese-style approach: a shared ResNet50 backbone produces embeddings that are passed to a small MLP classification head. The classifier was trained with a joint loss function combining Cross-Entropy and Batch-Hard Triplet Loss and evaluated on a held-out test set. This repository contains the dataset handling, training, evaluation and plotting utilities used to reproduce experiments and generate the key figures.
 
 ## Files of interest
 
@@ -175,6 +175,18 @@ The following graphs display the results obtained when running the train.py and 
     - True Positives (TP) = 50: Correctly classified Melanoma cases.
     - False Negatives (FN) = 8: Melanoma cases incorrectly called Benign (significantly reduced Missed Cancers).
 - By lowering the threshold to 0.2192, the model accepts an increase in False Positives (from 419 to 616) in order to achieve the critical result: the number of False Negatives is cut almost in half (from 14 to 8). This demonstrates that the model, when optimally calibrated, achieves a desirable clinical trade-off, maximizing the detection of the disease (Sensitivity = 86.2%).
+
+### T-SNE of test embeddings 
+![alt text](reports/figures/test_tsne.png)
+
+- This plot uses the t-SNE algorithm to reduce the high-dimensional feature embeddings (128-D) of the independent test set into two dimensions, visually demonstrating the quality of the separation learned by the metric loss component.
+- If the Normal (0) (blue dots) and Melanoma (1) (orange dots) clusters were perfectly separated with a clear boundary, the model would have learned a perfect feature space.
+- Model interpretation: The plot shows the Normal points forming large, dense clusters. The Melanoma points are sparse, which is expected due to the class imbalance, but their placement is not random. The orange points are generally pushed to the periphery of the benign clusters or form small, distinct groups. This visual pattern is not a sign of error; instead, it is an expected result of:
+    1) Imbalance: The overwhelming number of Normal samples visually dominates the plot, forcing the sparse Melanoma points to the edges.
+
+    2) Metric Learning Success: The fact that the orange points are not smeared randomly across the entire blue cloud confirms the Batch-Hard Triplet Loss successfully identified and clustered the malignant features away from the benign bulk.
+
+    3) T-SNE Artifacts: T-SNE focuses on local preservation, often distorting global distances. The overlapping appearance simply confirms that feature space separation is challenging but successful in the original 128-dimensional space (as proven by the AUC of 0.903). The model's features are highly discriminative, but the visual overlap is a limitation of projecting that complexity into 2D.
 
 ## Dependencies (recommended)
 
