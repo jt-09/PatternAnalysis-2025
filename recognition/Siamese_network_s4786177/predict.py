@@ -26,7 +26,12 @@ from dataset import get_isic2020_data_loaders, set_seed, DATA_ROOT
 from modules import SiameseNet
 
 def _youden_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
-    """Compute threshold that maximizes Youden's J = TPR - FPR."""
+    """Compute the decision threshold that maximizes Youden's J statistic.
+
+    Youden's J = TPR - FPR. This function computes the ROC curve and returns
+    the threshold corresponding to the maximum J. Useful for choosing an
+    operating point that balances sensitivity and specificity.
+    """
     fpr, tpr, thr = roc_curve(y_true, y_prob)
     j = tpr - fpr
     return float(thr[np.argmax(j)])
@@ -38,7 +43,14 @@ def evaluate_on_test(
     seed: int = 42,
     plot_tsne: bool = True,
 ) -> Tuple[float, float]:
-    """chore: to do later
+    """Evaluate a saved checkpoint on the ISIC2020 test set.
+
+    Loads the checkpoint into a `SiameseNet`, runs inference on the test
+    DataLoader, computes accuracy and AUC, saves ROC and confusion matrix
+    figures, and (optionally) produces a t-SNE of test embeddings.
+
+    Returns:
+        (test_acc, test_auc)
     """
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,6 +96,10 @@ def evaluate_on_test(
             all_labels.extend(y.detach().cpu().numpy().tolist())
             all_preds_argmax.extend(preds.detach().cpu().numpy().tolist())
             all_embs.append(emb.detach().cpu().numpy())
+
+    # At this point, collected probabilities, labels and embeddings
+    # across the test set. Compute standard metrics (accuracy & AUC) and
+    # derive a threshold using Youden's J to report sensitivity/specificity.
 
     # Metrics @ argmax
     test_acc = correct / max(1, count)

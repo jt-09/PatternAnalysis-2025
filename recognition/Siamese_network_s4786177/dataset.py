@@ -90,7 +90,12 @@ def _resolve_image_root() -> Path:
 IMG_ROOT = _resolve_image_root()  # resolved base path where training images live
 
 def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
-    """chore: Will complete later
+    """Return train and evaluation torchvision transforms.
+
+    The train transform includes common dermoscopy-friendly augmentations
+    (random resized crop, flips, slight rotation, color jitter) followed by
+    conversion to tensor and ImageNet normalization. The eval transform
+    deterministically resizes and center-crops images to match model input.
     """
     # standard ImageNet normalization values (common default)
     norm = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -118,7 +123,12 @@ def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
     return train_t, eval_t
 
 class ISICDataset(Dataset):
-    """chore: Will complete later
+    """Simple Dataset for ISIC images using a metadata DataFrame.
+
+    Each item returns a tuple (image, label, path). If a transform is
+    provided it will be applied to the PIL image (commonly converting to
+    a tensor). The dataset expects `df` to contain an `image_name` and
+    `target` columns as produced by `load_metadata()`.
     """
     def __init__(self, df: pd.DataFrame, root: Path, tfm=None):
         # store a copy of the dataframe indexed 0..N-1 for reliable iloc
@@ -147,11 +157,16 @@ class ISICDataset(Dataset):
 
         # ensure label is an integer (some CSVs use strings/ints)
         label = int(r.target)
-
-        # return the image tensor (or PIL if no tfm), integer label, and path as string
+        # Return (image, label, path). Image will be a tensor if a transform
+        # converting PIL->Tensor was provided; otherwise it's a PIL.Image.
         return img, label, str(path)
 
 def set_seed(s: int = 42):
+    """Set random seeds for Python, NumPy and PyTorch.
+
+    Note: enabling cuDNN benchmark can improve performance on fixed input
+    sizes but may reduce exact bitwise reproducibility across runs.
+    """
     # set random seeds for python/numpy/torch to make experiments reproducible
     random.seed(s); np.random.seed(s)
     torch.manual_seed(s); torch.cuda.manual_seed_all(s)
@@ -159,6 +174,12 @@ def set_seed(s: int = 42):
     torch.backends.cudnn.benchmark = True
 
 def get_isic2020_data(seed: int = 42):
+    """Return stratified train/val/test DataFrames for ISIC2020.
+
+    The split proportions are approximately 80% train, 10% val, 10% test.
+    The function performs two stratified splits using sklearn's
+    `train_test_split` to preserve class balance across partitions.
+    """
     # load metadata and split into train / val / test (stratified by label)
     df = load_metadata()
     X = df.image_name; y = df.target.astype(int)
@@ -174,6 +195,11 @@ def get_isic2020_data(seed: int = 42):
     )
 
 def _make_balanced_sampler(y_series: pd.Series) -> WeightedRandomSampler:
+    """Create a WeightedRandomSampler that balances classes by inverse freq.
+
+    The sampler returns indices with probability proportional to 1 / class_count
+    which helps during training on imbalanced datasets.
+    """
     # weights inversely proportional to class frequency -> balances sampling
     class_counts = y_series.value_counts().to_dict()
     weights_per_class = {c: 1.0 / float(cnt) for c, cnt in class_counts.items()}
@@ -181,7 +207,15 @@ def _make_balanced_sampler(y_series: pd.Series) -> WeightedRandomSampler:
     return WeightedRandomSampler(weights=weights, num_samples=len(weights), replacement=True)
 
 def get_isic2020_data_loaders(bs: int = 32, workers: int = 2, seed: int = 42, balance: bool = True):
-    # build DataLoaders for train, val, and test sets using the minimal transforms
+    """Return DataLoaders for train/val/test partitions.
+
+    Args:
+        bs: batch size for all loaders.
+        workers: number of background worker processes for data loading.
+        seed: random seed for reproducible splits and sampling.
+        balance: if True, use a WeightedRandomSampler to balance classes during training.
+    """
+    # Build DataLoaders for train, val, and test sets using the minimal transforms
     set_seed(seed)
     tr, v, te = get_isic2020_data(seed)
     ttf, etf = get_transforms()
@@ -190,6 +224,7 @@ def get_isic2020_data_loaders(bs: int = 32, workers: int = 2, seed: int = 42, ba
     vd  = ISICDataset(v, IMG_ROOT, etf)
     td  = ISICDataset(te, IMG_ROOT, etf)
 
+    # Optionally create a sampler that balances per-class sampling
     sampler = _make_balanced_sampler(tr["target"]) if balance else None
 
     train_loader = DataLoader(

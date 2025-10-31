@@ -25,6 +25,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def _pairwise_distances(emb: torch.Tensor) -> torch.Tensor:
     """
     Compute L2 pairwise distances between embeddings (assumes rows are embeddings).
+
+    Returns a [B, B] matrix where entry (i,j) is the L2 distance between
+    emb[i] and emb[j]. Numerical stability is handled by clamping and a small
+    epsilon before sqrt.
     """
     dot = emb @ emb.t()                          # [B,B]
     sq = torch.diag(dot)                         # [B]
@@ -74,7 +78,11 @@ def train_model(
     lambda_triplet: float = 1.0,
     triplet_margin: float = 0.2,
 ) -> None:
-    """chore: will do later
+    """Train the SiameseNet using cross-entropy and an optional triplet loss.
+
+    The training loop performs per-epoch training and validation, tracks
+    accuracy and AUC, saves the best checkpoint by validation AUC, and
+    writes simple plots of loss/accuracy/AUC into the `reports` directory.
     """
     set_seed(42)
     train_loader, val_loader, _ = get_isic2020_data_loaders(bs=batch_size, workers=2, seed=42)
